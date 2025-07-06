@@ -10,55 +10,63 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { 
+  serializeTasks, 
+  deserializeTasks, 
+  serializeAchievements, 
+  deserializeAchievements,
+  getDefaultAchievements,
+  getDefaultUserProgress
+} from "@/utils/dataTransforms";
 
 const Index = () => {
   const { toast } = useToast();
+  
+  // Use localStorage for persistent data
+  const [tasksJson, setTasksJson] = useLocalStorage('taskquest-tasks', '[]');
+  const [achievementsJson, setAchievementsJson] = useLocalStorage('taskquest-achievements', '');
+  const [userProgress, setUserProgress] = useLocalStorage('taskquest-progress', getDefaultUserProgress());
+  
+  // Local state for UI
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [userProgress, setUserProgress] = useState<UserProgress>({
-    level: 1,
-    currentXP: 0,
-    totalXP: 0,
-    tasksCompleted: 0,
-    currentStreak: 0,
-    longestStreak: 0
-  });
 
-  const [achievements, setAchievements] = useState<Achievement[]>([
-    {
-      id: '1',
-      title: 'First Quest',
-      description: 'Complete your first task',
-      icon: '🎯',
-      unlocked: false,
-      requirement: { type: 'tasks_completed', value: 1 }
-    },
-    {
-      id: '2',
-      title: 'Task Master',
-      description: 'Complete 10 tasks',
-      icon: '⭐',
-      unlocked: false,
-      requirement: { type: 'tasks_completed', value: 10 }
-    },
-    {
-      id: '3',
-      title: 'Streak Champion',
-      description: 'Maintain a 7-day streak',
-      icon: '🔥',
-      unlocked: false,
-      requirement: { type: 'streak_days', value: 7 }
-    },
-    {
-      id: '4',
-      title: 'Level Up!',
-      description: 'Reach level 5',
-      icon: '🏆',
-      unlocked: false,
-      requirement: { type: 'level_reached', value: 5 }
+  // Initialize data from localStorage on component mount
+  useEffect(() => {
+    // Load tasks
+    if (tasksJson && tasksJson !== '[]') {
+      const loadedTasks = deserializeTasks(tasksJson);
+      setTasks(loadedTasks);
     }
-  ]);
+
+    // Load achievements
+    if (achievementsJson) {
+      const loadedAchievements = deserializeAchievements(achievementsJson);
+      setAchievements(loadedAchievements);
+    } else {
+      // First time user - set default achievements
+      const defaultAchievements = getDefaultAchievements();
+      setAchievements(defaultAchievements);
+      setAchievementsJson(serializeAchievements(defaultAchievements));
+    }
+  }, []);
+
+  // Save tasks to localStorage whenever tasks change
+  useEffect(() => {
+    if (tasks.length > 0 || tasksJson !== '[]') {
+      setTasksJson(serializeTasks(tasks));
+    }
+  }, [tasks]);
+
+  // Save achievements to localStorage whenever achievements change
+  useEffect(() => {
+    if (achievements.length > 0) {
+      setAchievementsJson(serializeAchievements(achievements));
+    }
+  }, [achievements]);
 
   const checkAchievements = (newProgress: UserProgress) => {
     setAchievements(prevAchievements => 
@@ -175,7 +183,7 @@ const Index = () => {
         } else {
           // Task is being uncompleted
           setUserProgress(prevProgress => {
-            const newTotalXP = prevProgress.totalXP - task.xpReward;
+            const newTotalXP = Math.max(0, prevProgress.totalXP - task.xpReward);
             const newLevel = Math.floor(newTotalXP / 100) + 1;
             const currentXPInLevel = newTotalXP % 100;
             
@@ -184,7 +192,7 @@ const Index = () => {
               level: newLevel,
               currentXP: currentXPInLevel,
               totalXP: newTotalXP,
-              tasksCompleted: prevProgress.tasksCompleted - 1
+              tasksCompleted: Math.max(0, prevProgress.tasksCompleted - 1)
             };
           });
         }
@@ -193,6 +201,21 @@ const Index = () => {
       }
       return task;
     }));
+  };
+
+  const clearAllData = () => {
+    if (window.confirm('Are you sure you want to reset all your progress? This action cannot be undone.')) {
+      setTasks([]);
+      setUserProgress(getDefaultUserProgress());
+      setAchievements(getDefaultAchievements());
+      setTasksJson('[]');
+      setAchievementsJson('');
+      toast({
+        title: "Data Reset",
+        description: "All your progress has been reset. Start your quest anew!",
+        duration: 3000
+      });
+    }
   };
 
   const pendingTasks = tasks.filter(task => !task.completed);
@@ -206,6 +229,16 @@ const Index = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold gradient-text mb-2">TaskQuest Master</h1>
           <p className="text-muted-foreground">Level up your productivity with gamified tasks!</p>
+          <div className="mt-4 flex justify-center">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={clearAllData}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              Reset All Data
+            </Button>
+          </div>
         </div>
 
         {/* User Progress */}
